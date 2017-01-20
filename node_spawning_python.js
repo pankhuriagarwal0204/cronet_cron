@@ -1,6 +1,6 @@
 var exports = module.exports = {};
 
-exports.data_to_json = function (input, cb) {
+exports.data_to_json = function (input, ch, msg, cb) {
 
     var spawn_bytes_to_json = require('child_process').spawn,
         py = spawn_bytes_to_json('python', ['cronpacket/bytes_to_json.py', input]);
@@ -27,7 +27,7 @@ exports.data_to_json = function (input, cb) {
                 res[data[0]] = data[1];
             }
         });
-        cb(res);
+        cb(ch, msg, res);
         //console.log("done stdout");
     });
 
@@ -35,7 +35,7 @@ exports.data_to_json = function (input, cb) {
     });
 
     py.stderr.on('data', function (data) {
-        console.log("ERROR", data.toString())
+        ch.reject(msg, true);
         }
 
     )

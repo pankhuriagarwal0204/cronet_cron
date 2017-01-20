@@ -3,15 +3,11 @@
  */
 var redis = require("redis");
 var client = redis.createClient();
-// var parent = require('child_process').fork;
-//var child = parent('./child_process.js');
 var app = require('http').createServer();
 app.listen(3000);
 var io = require('socket.io')(app);
 var pg = require('./postgres');
-var process = require("./node_spawning_python");
-var redis = require("redis");
-var client = redis.createClient();
+var process_spawned = require("./node_spawning_python");
 var pg_client = pg.connect();
 var disp_all = require('./disp_all');
 var amqp = require('amqplib/callback_api');
@@ -20,7 +16,21 @@ client.get("Serial-Reader-Exchange", exchange_name_fetch_cb);
 
 function exchange_name_fetch_cb(err, exchange) {
 
+    if (err) {
+        console.log("exchange name could not be found from redis");
+        setTimeout(function () {
+            process.exit(0);
+        }, 500);
+    }
+
     client.hgetall("workers", function (err, reply) {
+
+        if (err) {
+            console.log("workers could not be found from redis");
+            setTimeout(function () {
+                process.exit(0);
+            }, 500);
+        }
 
         for (var queue in reply) {
             worker(exchange, queue, reply[queue]);
@@ -30,9 +40,16 @@ function exchange_name_fetch_cb(err, exchange) {
 
 function worker(exchange, queue, worker) {
 
-    var critical_queues = ['intrusion','sys-failure'];
+    var critical_queues = ['intrusion', 'sys-failure'];
 
     amqp.connect('amqp://localhost', function (err, conn) {
+
+        if (err) {
+            console.log("cannot connect to rabbit");
+            setTimeout(function () {
+                process.exit(0);
+            }, 500);
+        }
         conn.createChannel(function (err, ch) {
             ch.assertExchange(exchange, 'topic', {durable: true});
             ch.assertQueue(queue, {durable: true});
@@ -50,29 +67,41 @@ function worker(exchange, queue, worker) {
             buf = msg.content;
             console.log(buf);
             val = buf.toString('hex');
-            process_and_insert(val);
-        }, {noAck: true});
+            process_and_insert(val, ch, msg);
+        }, {noAck: false});
     }
 
-    function process_and_insert(data) {
+    function process_and_insert(data, ch, msg) {
         if (critical_queues.indexOf(queue) > -1) {
-            process.data_to_json(data, emit_and_insert);
+            process_spawned.data_to_json(data, ch, msg, emit_and_insert);
         } else {
-            process.data_to_json(data, insert_into_truth);
+            process_spawned.data_to_json(data, ch, msg, insert_into_truth);
         }
-        //disp_all.disp();
+        // //disp_all.disp();
     }
 
-    function insert_into_truth(value) {
+    function insert_into_truth(ch, msg, value) {
         console.log("from python in insert_into_db", value);
-        pg_client.query("INSERT INTO abcd(val) values($1)", [value]);
+        pg_client.query("INSERT INTO abcd(val) values($1)", [value], function (err, data) {
+            if (!err) {
+                ch.ack(msg);
+            } else {
+                ch.reject(msg, true);
+            }
+        });
     }
 
-    function emit_and_insert(value) {
+    function emit_and_insert(ch, msg, value) {
         console.log("from python critical packet", value);
-        client.hmset("critical_data", value);
-        io.emit('event_critical', value);
-        insert_into_truth(value);
+        client.hmset("critical_data", value, function (err, data) {
+            if (!err) {
+                io.emit('event_critical', value);
+                insert_into_truth(ch, msg, value);
+            } else {
+                ch.reject(msg, true);
+            }
+        });
+
     }
 }
 
