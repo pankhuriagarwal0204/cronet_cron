@@ -11,6 +11,7 @@ var process_spawned = require("./node_spawning_python");
 var pg_client = pg.connect();
 var disp_all = require('./disp_all');
 var amqp = require('amqplib/callback_api');
+var writer = require('./writer.js');
 
 client.get("Serial-Reader-Exchange", exchange_name_fetch_cb);
 
@@ -65,7 +66,6 @@ function worker(exchange, queue, worker) {
         ch.consume(queue, function (msg) {
             console.log(" [x] Received on %s", queue);
             buf = msg.content;
-            console.log(buf);
             val = buf.toString('hex');
             process_and_insert(val, ch, msg);
         }, {noAck: false});
@@ -85,6 +85,10 @@ function worker(exchange, queue, worker) {
         pg_client.query("INSERT INTO abcd(val) values($1)", [value], function (err, data) {
             if (!err) {
                 ch.ack(msg);
+                var packet = value['packet_type'];
+                packet = packet.slice(1,-2);
+                writer.write_response(packet);
+                console.log(packet);
             } else {
                 ch.reject(msg, true);
             }
@@ -104,4 +108,3 @@ function worker(exchange, queue, worker) {
 
     }
 }
-

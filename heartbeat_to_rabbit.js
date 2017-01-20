@@ -29,8 +29,8 @@ function exchange_name_fetch_cb(err, exchange) {
 
 function send_to_queue(ch, queue, exchange) {
     console.log("in send_to_queue");
-
-    build_heartbeat.generate_packet(cb);
+    var key = 'REMOTE_TO_GATEWAT_HEARTBEAT_RESPONSE';
+    build_heartbeat.generate_packet(key, cb);
     function cb(data) {
         msg = data.toString('hex');
         console.log(msg);

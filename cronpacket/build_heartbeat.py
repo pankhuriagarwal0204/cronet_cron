@@ -10,11 +10,11 @@ def read_in():
 def main():
     obj = CronPack()
     packet = None
-    #val = read_in()
+    val = sys.argv[1]
 
     try:
         packet = obj.build("cronpack", source_addr=23, dest_addr=45,
-                           packet_type=obj.PACKET_TYPES['REMOTE_TO_GATEWAT_HEARTBEAT_RESPONSE'])
+                           packet_type=obj.PACKET_TYPES[val])
     except Exception as e:
         print e
 
